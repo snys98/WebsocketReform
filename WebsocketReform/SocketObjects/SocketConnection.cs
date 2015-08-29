@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Net;
 using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Text;
@@ -241,6 +242,7 @@ namespace WebsocketReform.SocketObjects
             Socket.EndSend(status);
             Socket.BeginReceive(receivedDataBuffer, 0, receivedDataBuffer.Length, 0, new AsyncCallback(Read), null);
             string s = System.Text.Encoding.Default.GetString(receivedDataBuffer);
+            //Todo:在s中提取登陆参数,然后再NewConnection中注册
             NewConnection?.Invoke(this, EventArgs.Empty);
         }
 
