@@ -8,11 +8,11 @@ namespace WebsocketReform.Objects
     //区域
     public class Domain
     {
-        public static Domain DefaultDomain = new Domain("0");
+        public static Domain DefaultDomain = new Domain("");
         public Domain(string id)
         {
             Id = id;
-            ClassDict = new Dictionary<string, Class> { { "0", new Class("0") { MaxNum = this.MaxNum } } };
+            ClassDict = new Dictionary<string, Class> { { "", new Class("",this) { MaxNum = this.MaxNum } } };
         }
 
         public string Id { get; }
@@ -34,54 +34,59 @@ namespace WebsocketReform.Objects
 
         public Dictionary<string,Class> ClassDict { get; }
 
-        public Class DefaultClass => this.ClassDict["0"];
+        public Class DefaultClass => this.ClassDict[""];
         public bool IsFull => CurNum >= MaxNum;
         public string DraftInfo {
-            get {
-                string result = ClassDict.Select(item => item.Value).Aggregate("", (current, cls) => current +
-                                                                                                     $"{cls.Id},{cls.Name},{cls.Description},{(cls.HasPwd ? "Y" : "N")},{cls.UserDict.Count},{cls.MaxNum}|");
-                result.Remove(result.LastIndexOf("|", StringComparison.Ordinal));
-                return result;
+            get
+            {
+                string result = ChatRoom.UserDict
+                    .Select(user => user.Value)
+                    .Aggregate("",
+                        (current, user) =>
+                            current +
+                            $"{user.Id},{user.Name},{user.NickName},{user.State},{user.ReceiveState},{user.Sign},{user.Class.Id}|");
+                result = this.ClassDict.Select(cls => cls.Value)
+                    .Aggregate(result,
+                        (current, cls) =>
+                            current + $"{cls.Id},{cls.Name},{cls.Description},{(cls.HasPwd?"Y":"N")},{cls.CurNum},{cls.MaxNum}|");
+                return result.TrimEnd('|');
             }
         }
 
-        public bool CreateClass(string classId, string className, string classDesc, string classPwd, int classMaxNum)
+        public bool CreateClass(string createrId, string classId, string className, string classDesc, string classPwd, int classMaxNum)
         {
+            User creater = ChatRoom.UserDict[createrId];
             if (classMaxNum > this.MaxNum)
             {
                 return false;
             }
-            var cls = new Class(classId)
+            var cls = new Class(classId,this)
             {
                 Description = classDesc,
                 Password = classPwd,
                 MaxNum = classMaxNum,
-                Name = className
+                Name = className,
+                Owner = creater
             };
             this.ClassDict.Add(classId, cls);
+            creater.OwnedClasses.Add(cls);
             return true;
         }
 
         public void DeleteClass(Class cls)
         {
             cls.Dismiss();
+            this.ClassDict.Remove(cls.Id);
         }
 
-        public void BroadCast(string messageToSend)
+        public void BroadCast(string messageToSend,Class excludeClass = null,User excludeUser = null)
         {
             foreach (KeyValuePair<string, Class> keyValuePair in ClassDict)
             {
-                keyValuePair.Value.BroadCast(messageToSend);
-            }
-        }
-
-        public void Dismiss()
-        {
-            var usersToMove = ClassDict.SelectMany(classPair => classPair.Value.UserDict).Select(userPair => userPair.Value);
-            foreach (var user in usersToMove)
-            {
-                user.Class = DefaultDomain.DefaultClass;
-                DefaultDomain.DefaultClass.UserDict.Add(user.Id,user);
+                if (keyValuePair.Value!=excludeClass)
+                {
+                    keyValuePair.Value.BroadCast(messageToSend, excludeUser);
+                }
             }
         }
     }

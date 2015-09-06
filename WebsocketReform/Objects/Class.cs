@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 
 namespace WebsocketReform.Objects
@@ -16,9 +17,10 @@ namespace WebsocketReform.Objects
 
         public int CurrentGID = 0;
 
-        public Class(string id)
+        public Class(string id, Domain belonging)
         {
             Id = id;
+            this.Domain = belonging;
         }
 
         public string Id { get;}
@@ -31,6 +33,7 @@ namespace WebsocketReform.Objects
 
         public int CurNum => this.UserDict.Count;
         public int MaxNum { get; set; } = 100;
+        public User Owner { get; set; }
 
         public Dictionary<string,User> UserDict { get; set; } = new Dictionary<string, User>();
 
@@ -65,7 +68,7 @@ namespace WebsocketReform.Objects
             get
             {
                 //result.Remove(result.LastIndexOf("|"));
-                return UserDict.Aggregate("", (current, item) => current + $"{item.Value.Id},");
+                return UserDict.Aggregate("", (current, item) => current + $"{item.Value.Id},").TrimEnd(',');
             }
         }
 
@@ -85,16 +88,20 @@ namespace WebsocketReform.Objects
             this.CurrentGID = 0;
         }
 
-        public void BroadCast(string messageToSend)
+        public void BroadCast(string messageToSend,User exclude=null)
         {
             foreach (KeyValuePair<string, User> keyValuePair in UserDict)
             {
-                keyValuePair.Value.PushMessage(messageToSend);
+                if (keyValuePair.Value!= exclude)
+                {
+                    keyValuePair.Value.PushMessage(messageToSend);
+                }
             }
         }
 
         public void Dismiss()
         {
+            this.Owner.OwnedClasses.Remove(this);
             var usersToNotify = UserDict.Select(userPair => userPair.Value).ToList();
             foreach (var user in usersToNotify)
             {
@@ -106,6 +113,19 @@ namespace WebsocketReform.Objects
         public void StoreGraphic(string content)
         {
             this.ClassGraph.Add(new Graphic() { Sid = ++CurrentGID, Content = content });
+        }
+
+        public void DelLastGraph()
+        {
+            try
+            {
+                this.ClassGraph.RemoveAt(--this.CurrentGID);
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine(ex.Message);
+                return;
+            }
         }
     }
 }

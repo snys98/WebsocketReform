@@ -26,7 +26,7 @@ namespace WebsocketReform.SocketObjects
 
     public enum ServerStatusLevel { Off, WaitingConnection, ConnectionEstablished };
 
-    public delegate void NewConnectionEventHandler(SocketConnection sender, EventArgs e);
+    public delegate void NewConnectionEventHandler(SocketConnection sender, SocketConnection.NewConnectionEventArgs e);
     public delegate void DataReceivedEventHandler(SocketConnection sender, string message, EventArgs e);
     public delegate void DisconnectedEventHandler(SocketConnection sender, EventArgs e);
     public delegate void BroadcastEventHandler(string message, EventArgs e);
@@ -235,7 +235,7 @@ namespace WebsocketReform.SocketObjects
             //MsgSender.SendMessage(target, messageToOthers, this);
         }
 
-        public void OnNewConnection(SocketConnection sender, EventArgs e)
+        public void OnNewConnection(SocketConnection sender, SocketConnection.NewConnectionEventArgs e)
         {
             Debug.WriteLine("a new connection");
             ChatRoom.OnNewConnection(sender,e);

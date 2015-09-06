@@ -1,7 +1,10 @@
 ﻿using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Security.Cryptography;
+using System.Security.Policy;
 using System.Text;
 using WebSocketServer;
 
@@ -32,6 +35,18 @@ namespace WebsocketReform.SocketObjects
 
 
         public event NewConnectionEventHandler NewConnection;
+
+        public class NewConnectionEventArgs:EventArgs
+        {
+            public string UserId;
+            public string UserName;
+            public string UserNickName;
+            public string UserDesc;
+            public string UserState;
+            public string RecState;
+            public string UserSign;
+        }
+
         public event DataReceivedEventHandler DataReceived;
         public event DisconnectedEventHandler Disconnected;
 
@@ -236,18 +251,30 @@ namespace WebsocketReform.SocketObjects
             secWebSocketAccept = Convert.ToBase64String(sha1Hash);
             return secWebSocketAccept;
         }
-
         private void HandshakeFinished(IAsyncResult status)
         {
             Socket.EndSend(status);
             Socket.BeginReceive(receivedDataBuffer, 0, receivedDataBuffer.Length, 0, new AsyncCallback(Read), null);
-            string s = System.Text.Encoding.Default.GetString(receivedDataBuffer);
-            //Todo:在s中提取登陆参数,然后再NewConnection中注册
-            NewConnection?.Invoke(this, EventArgs.Empty);
+            string s = System.Text.Encoding.UTF8.GetString(receivedDataBuffer);
+            s = System.Web.HttpUtility.UrlDecode(s);
+            string[] strings = s.Substring(s.IndexOf('?') + 1).TrimEnd('\0').Split('&');
+            Dictionary<string,string> d = strings.ToDictionary(getParam => getParam.Split(' ')[0].Split('=')[0], getParam => getParam.Split(' ')[0].Split('=')[1]);
+            NewConnectionEventArgs args = new NewConnectionEventArgs()
+            {
+                UserId = d["userID"],
+                RecState = d["recState"],
+                UserDesc = d["userDesc"],
+                UserName = d["userName"],
+                UserNickName = d["userNickName"],
+                UserSign = d["userSign"],
+                UserState = d["userState"],
+            };
+            NewConnection?.Invoke(this, args);
         }
 
         public void Send(string message)
         {
+            if (!this.Socket.Connected) return;
             if (this.IsDataMasked)
             {
                 DataFrame dr = new DataFrame(message);

@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Linq;
 using WebsocketReform.SocketObjects;
 
@@ -40,7 +41,7 @@ namespace WebsocketReform.Objects
         }
 
         public Identity Identity { get; set; } = Identity.Student;
-        public bool HasClass { get; set; } = false;
+        public List<Class> OwnedClasses { get; set; } = new List<Class>();
         public bool IsValid => this.Id == null;
         public string Id { get; }
 
@@ -52,11 +53,11 @@ namespace WebsocketReform.Objects
 
         public string State { get; set; } = "O";
 
-        public ReceiveState ReceiveState { get; set; } = 0;
+        public string ReceiveState { get; set; }
 
         public string Sign { get; set; } = "";
 
-        public SocketConnection Socket { get; }
+        public SocketConnection Socket { get; set; }
 
         public Class Class { get; set; }
 
@@ -73,7 +74,9 @@ namespace WebsocketReform.Objects
             {
                 return false;
             }
+            this.Class.UserDict.Remove(this.Id);//移出原来的教室
             this.Class = targetDomain.DefaultClass;
+            targetDomain.DefaultClass.UserDict.Add(this.Id,this);
             return true;
         }
 
@@ -87,6 +90,7 @@ namespace WebsocketReform.Objects
             {
                 return 2;
             }
+            this.Class.UserDict.Remove(this.Id);
             this.Class = cls;
             cls.UserDict.Add(this.Id,this);
             return 0;
@@ -110,7 +114,7 @@ namespace WebsocketReform.Objects
 
         public string AppendAllGraphic()
         {
-            return this.Class.ClassGraph.Aggregate("",(current, t) => current + ("|" + t.Content)).Remove(0);
+            return this.Class.ClassGraph.Aggregate("",(current, t) => current + ("|" + t.Content)).Substring(1);
         }
 
         public string AppendTargetGraphic(int sid)
