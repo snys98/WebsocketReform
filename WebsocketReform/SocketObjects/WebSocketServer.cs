@@ -143,7 +143,7 @@ namespace WebsocketReform.SocketObjects
         } 
         #endregion
 
-        public ChatRoom ChatRoom { get; } = new ChatRoom();
+        public ChatRoom ChatRoom { get; } = ChatRoom.Instance;
 
         public void StartServer()
         {
@@ -173,7 +173,7 @@ namespace WebsocketReform.SocketObjects
 
         public void OnDisconnected(SocketConnection sender, EventArgs e)
         {
-            Debug.WriteLine("a connection closed");
+            Console.WriteLine("a connection closed");
             ChatRoom.OnDisconnected(sender,e);
             //SocketConnection sConn = sender as SocketConnection;
             //if(sConn != null && !sConn.User.HasClass)
@@ -200,7 +200,7 @@ namespace WebsocketReform.SocketObjects
             //        ClassOwnerReconnectMonitors.Add(
             //        sConn.User.Id, timer);
             //        timer.Start();
-            //        Debug.WriteLine("重新启动计时!");
+            //        Console.WriteLine("重新启动计时!");
             //    }
             //}
             //else
@@ -211,7 +211,7 @@ namespace WebsocketReform.SocketObjects
 
         public void OnDataReceived(SocketConnection sender, string message, EventArgs e)
         {
-            Debug.WriteLine("a new message");
+            Console.WriteLine("a new message");
             ChatRoom.OnDataReceived(sender,message,e);
             ////第一个用户登陆，初始化默认区域和默认教室
             //if (ClassList.ClassIDHashTab.Count == 0 && DomainList.DomainIDHashTab.Count == 0)
@@ -237,7 +237,7 @@ namespace WebsocketReform.SocketObjects
 
         public void OnNewConnection(SocketConnection sender, SocketConnection.NewConnectionEventArgs e)
         {
-            Debug.WriteLine("a new connection");
+            Console.WriteLine("a new connection");
             ChatRoom.OnNewConnection(sender,e);
         }
     }

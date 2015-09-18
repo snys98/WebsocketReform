@@ -72,11 +72,6 @@ namespace WebsocketReform.Objects
             }
         }
 
-        public string GetGraphic(int sid)
-        {
-            return classGraph[sid].Content;
-        }
-
         public override string ToString()
         {
             return this.Id+":{"+this.UserDict+"}";
@@ -102,12 +97,13 @@ namespace WebsocketReform.Objects
         public void Dismiss()
         {
             this.Owner.OwnedClasses.Remove(this);
-            var usersToNotify = UserDict.Select(userPair => userPair.Value).ToList();
-            foreach (var user in usersToNotify)
+            var usersToMove = UserDict.Select(userPair => userPair.Value).ToList();
+            foreach (var user in usersToMove)
             {
                 user.Class = this.Domain.DefaultClass;
                 this.Domain.DefaultClass.UserDict.Add(user.Id, user);
             }
+            this.Domain.ClassDict.Remove(this.Id);
         }
 
         public void StoreGraphic(string content)
@@ -123,7 +119,7 @@ namespace WebsocketReform.Objects
             }
             catch (Exception ex)
             {
-                Debug.WriteLine(ex.Message);
+                Console.WriteLine(ex.Message);
                 return;
             }
         }

@@ -39,16 +39,17 @@ namespace WebsocketReform.Objects
         public string DraftInfo {
             get
             {
-                string result = ChatRoom.UserDict
-                    .Select(user => user.Value)
+                string result = ClassDict
+                    .SelectMany(item => item.Value.UserDict).Select(item => item.Value)
                     .Aggregate("",
                         (current, user) =>
                             current +
                             $"{user.Id},{user.Name},{user.NickName},{user.State},{user.ReceiveState},{user.Sign},{user.Class.Id}|");
-                result = this.ClassDict.Select(cls => cls.Value)
+                result = ClassDict.Select(cls => cls.Value)
                     .Aggregate(result,
                         (current, cls) =>
-                            current + $"{cls.Id},{cls.Name},{cls.Description},{(cls.HasPwd?"Y":"N")},{cls.CurNum},{cls.MaxNum}|");
+                            current +
+                            $"{cls.Id},{cls.Name},{cls.Description},{(cls.HasPwd ? "Y" : "N")},{cls.CurNum},{cls.MaxNum}|");
                 return result.TrimEnd('|');
             }
         }

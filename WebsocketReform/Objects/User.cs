@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using WebsocketReform.SocketObjects;
 
@@ -59,7 +60,7 @@ namespace WebsocketReform.Objects
 
         public SocketConnection Socket { get; set; }
 
-        public Class Class { get; set; }
+        public Class Class { get; set; } = ChatRoom.Instance.DefaultDomain.DefaultClass; 
 
         public Domain Domain => this.Class.Domain;
 
@@ -109,19 +110,26 @@ namespace WebsocketReform.Objects
 
         public void PushMessage(string messageToSend)
         {
-            this.Socket.Send(messageToSend);
+            try
+            {
+                this.Socket.Send(messageToSend);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("多个用户同时下线: "+this.Id);
+            }
         }
 
         public string AppendAllGraphic()
         {
-            return this.Class.ClassGraph.Aggregate("",(current, t) => current + ("|" + t.Content)).Substring(1);
+            return this.Class.ClassGraph.Aggregate("",(current, t) => current + ("|" + t.Content))+$"|{this.Class.ClassGraph.Count}";
         }
 
         public string AppendTargetGraphic(int sid)
         {
             if (this.Class.ClassGraph.Count >= sid)
             {
-                return this.Class.GetGraphic(sid);
+                return $"{this.Class.ClassGraph[sid].Content},{(sid + 1)}";
             }
             else
             {

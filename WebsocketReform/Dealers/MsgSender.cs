@@ -20,7 +20,7 @@
 //            }
 //            catch (Exception ex)
 //            {
-//                Debug.WriteLine(ex.Message);
+//                Console.WriteLine(ex.Message);
 //            }
 //        }
 //    }

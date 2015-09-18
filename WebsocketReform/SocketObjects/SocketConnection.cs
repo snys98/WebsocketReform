@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Net;
 using System.Net.Sockets;
@@ -178,7 +179,10 @@ namespace WebsocketReform.SocketObjects
 
             System.Text.UTF8Encoding decoder = new System.Text.UTF8Encoding();
             String rawClientHandshake = decoder.GetString(receivedDataBuffer, 0, HandshakeLength);
-
+            if (HandshakeLength<=8)
+            {
+                return;
+            }
             Array.Copy(receivedDataBuffer, HandshakeLength - 8, last8Bytes, 0, 8);
 
             //现在使用的是比较新的Websocket协议
@@ -253,23 +257,30 @@ namespace WebsocketReform.SocketObjects
         }
         private void HandshakeFinished(IAsyncResult status)
         {
-            Socket.EndSend(status);
-            Socket.BeginReceive(receivedDataBuffer, 0, receivedDataBuffer.Length, 0, new AsyncCallback(Read), null);
-            string s = System.Text.Encoding.UTF8.GetString(receivedDataBuffer);
-            s = System.Web.HttpUtility.UrlDecode(s);
-            string[] strings = s.Substring(s.IndexOf('?') + 1).TrimEnd('\0').Split('&');
-            Dictionary<string,string> d = strings.ToDictionary(getParam => getParam.Split(' ')[0].Split('=')[0], getParam => getParam.Split(' ')[0].Split('=')[1]);
-            NewConnectionEventArgs args = new NewConnectionEventArgs()
+            try
             {
-                UserId = d["userID"],
-                RecState = d["recState"],
-                UserDesc = d["userDesc"],
-                UserName = d["userName"],
-                UserNickName = d["userNickName"],
-                UserSign = d["userSign"],
-                UserState = d["userState"],
-            };
-            NewConnection?.Invoke(this, args);
+                Socket.EndSend(status);
+                Socket.BeginReceive(receivedDataBuffer, 0, receivedDataBuffer.Length, 0, new AsyncCallback(Read), null);
+                string s = System.Text.Encoding.UTF8.GetString(receivedDataBuffer);
+                s = System.Web.HttpUtility.UrlDecode(s);
+                string[] strings = s.Substring(s.IndexOf('?') + 1).TrimEnd('\0').Split('&');
+                Dictionary<string, string> d = strings.ToDictionary(getParam => getParam.Split(' ')[0].Split('=')[0], getParam => getParam.Split(' ')[0].Split('=')[1]);
+                NewConnectionEventArgs args = new NewConnectionEventArgs()
+                {
+                    UserId = d["userID"],
+                    RecState = d["recState"],
+                    UserDesc = d["userDesc"],
+                    UserName = d["userName"],
+                    UserNickName = d["userNickName"],
+                    UserSign = d["userSign"],
+                    UserState = d["userState"],
+                };
+                NewConnection?.Invoke(this, args);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine(ex.Message,":", ex.StackTrace);
+            }
         }
 
         public void Send(string message)
@@ -286,7 +297,6 @@ namespace WebsocketReform.SocketObjects
                 this.Socket.Send(Encoding.UTF8.GetBytes(message));
                 this.Socket.Send(this.LastByte);
             }
-            
         }
     }
 }
