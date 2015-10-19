@@ -2,10 +2,13 @@
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Net;
 using System.Net.Sockets;
-using System.Timers;
+using System.Reflection;
+using System.Threading;
 using WebsocketReform.Objects;
+using Timer = System.Timers.Timer;
 
 namespace WebsocketReform.SocketObjects
 {
@@ -35,7 +38,7 @@ namespace WebsocketReform.SocketObjects
     {
         #region MyRegion
         private bool _alreadyDisposed;
-        private Socket _listener;
+        private List<Socket> _listener;
         private int _connectionsQueueLength;
         private int _maxBufferSize;
         private string _handshake;
@@ -60,7 +63,7 @@ namespace WebsocketReform.SocketObjects
 
         public Dictionary<string, Timer> ClassOwnerReconnectMonitors { get; set; }
 
-        public Socket Listener
+        public List<Socket> Listener
         {
             get { return _listener; }
             set { _listener = value; }
@@ -70,7 +73,7 @@ namespace WebsocketReform.SocketObjects
         {
             _alreadyDisposed = false;
             _logger = new Logger();
-            _listener = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.IP);
+            _listener = new List<Socket>();
             Status = ServerStatusLevel.Off;
             _connectionsQueueLength = 500;
             _maxBufferSize = 1024 * 100;
@@ -79,7 +82,20 @@ namespace WebsocketReform.SocketObjects
             _firstByte[0] = 0x00;
             _lastByte[0] = 0xFF;
             _logger.LogEvents = true;
-            _listener.Bind(new IPEndPoint(getLocalmachineIPAddress(), ServerPort));
+
+            var ipEntry = Dns.GetHostEntry(Dns.GetHostName());
+            foreach (IPAddress ip in ipEntry.AddressList)
+            {
+
+                //IPV4
+                if (ip.AddressFamily == AddressFamily.InterNetwork)
+                {
+                    var socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.IP);
+                    socket.Bind(new IPEndPoint(ip, ServerPort));
+                    _listener.Add(socket);
+                }
+            }
+            
 
             ClassOwnerReconnectMonitors = new Dictionary<string, Timer>();
         }
@@ -87,7 +103,7 @@ namespace WebsocketReform.SocketObjects
         public WebSocketServer(string address = "chat", int port = 4141)
         {
             ServerPort = port;
-            ServerLocation = $"ws://{getLocalmachineIPAddress()}:{port}/{address}";
+            //ServerLocation = $"ws://{getLocalmachineIPAddress()}:{port}/{address}";
             Initialize();
         }
 
@@ -95,7 +111,7 @@ namespace WebsocketReform.SocketObjects
         {
             ServerPort = serverPort;
             ConnectionOrigin = connectionOrigin;
-            ServerLocation = serverLocation;
+            //ServerLocation = serverLocation;
             Initialize();
         }
 
@@ -116,7 +132,8 @@ namespace WebsocketReform.SocketObjects
             if (!_alreadyDisposed)
             {
                 _alreadyDisposed = true;
-                if (_listener != null) _listener.Close();
+                if (_listener != null)
+                    _listener.ForEach(item=>item.Close());
                 //清除（关闭）所有连接
                 //UserInfo.clearAll();
 
@@ -148,26 +165,50 @@ namespace WebsocketReform.SocketObjects
         public void StartServer()
         {
             Char char1 = Convert.ToChar(65533);
-            _listener.Listen(_connectionsQueueLength);
-            _logger.Log(string.Format("聊天服务器启动。监听地址：{0}, 端口：{1}", getLocalmachineIPAddress(), ServerPort));
-            _logger.Log(string.Format("WebSocket服务器地址: ws://{0}:{1}/chat", getLocalmachineIPAddress(), ServerPort));
-            while (true)
+            for (int i = 0; i < _listener.Count; i++)
             {
-                Socket sc = _listener.Accept();
-
-                if (sc != null)
+                new Thread((socketObj) =>
                 {
-                    //System.Threading.Thread.Sleep(100);
-                    SocketConnection socketConn = new SocketConnection(sc);
-                    socketConn.NewConnection += new NewConnectionEventHandler(OnNewConnection);
-                    socketConn.DataReceived += new DataReceivedEventHandler(OnDataReceived);
-                    socketConn.Disconnected += new DisconnectedEventHandler(OnDisconnected);
+                    var socket = socketObj as Socket;
+                    socket.Listen(_connectionsQueueLength);
+                    _logger.Log(string.Format("聊天服务器启动。监听地址：{0}", socket.LocalEndPoint));
+                    _logger.Log(string.Format("WebSocket服务器地址: ws://{0}/chat", socket.LocalEndPoint));
+                    while (true)
+                    {
+                        Socket sc = socket.Accept();
+                        Console.WriteLine("*****Available在线程[" + Thread.CurrentThread.ManagedThreadId + "]中为" + sc.Available);
+                        if (sc != null)
+                        {
+                            //System.Threading.Thread.Sleep(100);   
+                            SocketConnection socketConn = new SocketConnection(sc);
+                            Console.WriteLine("*****Available在线程[" + Thread.CurrentThread.ManagedThreadId + "]中为" + socketConn.Socket.Available);
+                            socketConn.NewConnection += new NewConnectionEventHandler(OnNewConnection);
+                            socketConn.DataReceived += new DataReceivedEventHandler(OnDataReceived);
+                            socketConn.Disconnected += new DisconnectedEventHandler(OnDisconnected);
 
-                    socketConn.Socket.BeginReceive(socketConn.receivedDataBuffer,
-                                                             0, socketConn.receivedDataBuffer.Length,
-                                                             0, new AsyncCallback(socketConn.ManageHandshake),
-                                                             socketConn.Socket.Available);
-                }
+
+                            //socketConn.Socket.BeginReceive(socketConn.receivedDataBuffer,
+                            //0,
+                            //socketConn.receivedDataBuffer.Length,
+                            //0,
+                            //    ar =>
+                            //    {
+                            //        if ((int)ar.AsyncState == 0)
+                            //        {
+                            //            return;
+                            //        }
+                            //        Console.WriteLine("*****当前线程[" + Thread.CurrentThread.ManagedThreadId + "],Available值为" + socketConn.Socket.Available);
+                            //        socketConn.ManageHandshake(ar);
+                            //    },
+                            //socketConn.Socket.Available);
+                            var dataLength = socketConn.Socket.Receive(socketConn.receivedDataBuffer, 0, socketConn.receivedDataBuffer.Length, 0);
+                            if (dataLength!=0)
+                            {
+                                socketConn.ManageHandshake(dataLength: dataLength);
+                            }
+                        }
+                    }
+                }).Start(_listener[i]);
             }
         }
 
@@ -175,6 +216,7 @@ namespace WebsocketReform.SocketObjects
         {
             Console.WriteLine("a connection closed");
             ChatRoom.OnDisconnected(sender,e);
+            sender.Socket.Close();
             //SocketConnection sConn = sender as SocketConnection;
             //if(sConn != null && !sConn.User.HasClass)
             //{

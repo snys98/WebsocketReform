@@ -109,7 +109,6 @@ namespace WebSocketServer
             Buffer.BlockCopy(_content, 0, buffer, 2 + _extend.Length + _mask.Length, _content.Length);
             return buffer;
         }
-
         public string Text
         {
             get
@@ -119,6 +118,11 @@ namespace WebSocketServer
 
                 return Encoding.UTF8.GetString(_content);
             }
+        }
+
+        public DataFrameHeader Header
+        {
+            get { return _header; }
         }
 
         private byte[] Mask(byte[] data, byte[] mask)

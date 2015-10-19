@@ -7,6 +7,7 @@ using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Security.Policy;
 using System.Text;
+using System.Threading;
 using WebSocketServer;
 
 namespace WebsocketReform.SocketObjects
@@ -20,6 +21,11 @@ namespace WebsocketReform.SocketObjects
         {
             get { return isDataMasked; }
             set { isDataMasked = value; }
+        }
+
+        public string NewHandshake
+        {
+            get { return New_Handshake; }
         }
 
         public Socket Socket;
@@ -66,7 +72,7 @@ namespace WebsocketReform.SocketObjects
             Handshake += "Upgrade: WebSocket" + Environment.NewLine;
             Handshake += "Connection: Upgrade" + Environment.NewLine;
             Handshake += "Sec-WebSocket-Origin: " + "{0}" + Environment.NewLine;
-            Handshake += string.Format("Sec-WebSocket-Location: " + "ws://{0}:4141/chat" + Environment.NewLine, WebsocketReform.SocketObjects.WebSocketServer.getLocalmachineIPAddress());
+            Handshake += string.Format("Sec-WebSocket-Location: " + "ws://{0}/chat" + Environment.NewLine,socket.LocalEndPoint);
             Handshake += Environment.NewLine;
 
             New_Handshake = "HTTP/1.1 101 Switching Protocols" + Environment.NewLine;
@@ -105,9 +111,8 @@ namespace WebsocketReform.SocketObjects
                 {
                     messageReceived = dr.Text;
                 }
-
                 if ((messageReceived.Length == MaxBufferSize && messageReceived[0] == Convert.ToChar(65533)) ||
-                    messageReceived.Length == 0)
+                    (messageReceived.Length == 0 && dr.Header.OpCode != 0xA) || dr.Header.OpCode == 0x8)
                 {
                     //logger.Log("接受到的信息 [\"" + string.Format("Logout:{0}", this.User.Id) + "\"]");
                     if (Disconnected != null)
@@ -115,7 +120,7 @@ namespace WebsocketReform.SocketObjects
                 }
                 else
                 {
-                    if (DataReceived != null)
+                    if (messageReceived != string.Empty)
                     {
                         logger.Log("接受到的信息 [\"" + messageReceived + "\"]");
                         DataReceived(this, messageReceived, EventArgs.Empty);
@@ -132,7 +137,6 @@ namespace WebsocketReform.SocketObjects
                     Disconnected(this, EventArgs.Empty);
             }
         }
-
         private void BuildServerPartialKey(int keyNum, string clientKey)
         {
             string partialServerKey = "";
@@ -171,16 +175,17 @@ namespace WebsocketReform.SocketObjects
             return MD5Service.ComputeHash(concatenatedKeys);
         }
 
-        public void ManageHandshake(IAsyncResult status)
+        public void ManageHandshake(IAsyncResult status = null,int dataLength = 0)
         {
             string header = "Sec-WebSocket-Version:";
-            int HandshakeLength = (int)status.AsyncState;
+            int HandshakeLength = dataLength==0?(int)status.AsyncState: dataLength;
             byte[] last8Bytes = new byte[8];
 
-            System.Text.UTF8Encoding decoder = new System.Text.UTF8Encoding();
+            Encoding decoder = Encoding.UTF8;
             String rawClientHandshake = decoder.GetString(receivedDataBuffer, 0, HandshakeLength);
             if (HandshakeLength<=8)
             {
+                this.Socket.Close();
                 return;
             }
             Array.Copy(receivedDataBuffer, HandshakeLength - 8, last8Bytes, 0, 8);

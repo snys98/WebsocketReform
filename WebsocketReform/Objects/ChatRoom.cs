@@ -7,7 +7,8 @@ using System.Threading;
 using log4net;
 using WebsocketReform.SocketObjects;
 
-[assembly:log4net.Config.XmlConfigurator(Watch = true)]
+[assembly: log4net.Config.XmlConfigurator(Watch = true)]
+
 namespace WebsocketReform.Objects
 {
     public class ChatRoom
@@ -34,13 +35,15 @@ namespace WebsocketReform.Objects
                 return _instance;
             }
         }
+
         #endregion
+
         public Dictionary<string, Domain> DomainDict { get; }
 
         public static readonly Dictionary<string, User> UserDict = new Dictionary<string, User>();
         public Domain DefaultDomain => this.DomainDict[""];
 
-        private readonly ILog _logger = LogManager.GetLogger(typeof(ChatRoom));
+        private readonly ILog _logger = LogManager.GetLogger(typeof (ChatRoom));
 
         public ChatRoom()
         {
@@ -81,7 +84,8 @@ namespace WebsocketReform.Objects
             {
                 case "C": //控制消息
                     var command = partList[3].Split('|')[0];
-                    var paramList = partList[3].IndexOf('|') != -1 ? partList[3].Split('|')[1].Split(',') : null;
+                    //避免数组越界
+                    var paramList = partList[3].IndexOf('|') != -1 ? partList[3].Split('|')[1].Split(',') : new string[]{};
                     switch (command)
                     {
                         case "CreateDomain": //创建区域
@@ -92,13 +96,26 @@ namespace WebsocketReform.Objects
                                 var domainName = paramList[1];
                                 var domainDesc = paramList[2];
                                 var maxNum = paramList[3];
-                                thisUser.PushMessage(CreateDomain(domainId, domainName, domainDesc, int.Parse(maxNum))
-                                    ? $"C;{thisUser.Id};;CreateDomainSuccess"
-                                    : $"C;{thisUser.Id};;CreateDomainFail|{"已有同名区域"}");
+                                if (CreateDomain(domainId, domainName, domainDesc, int.Parse(maxNum)))
+                                {
+                                    thisUser.PushMessage($"C;{thisUser.Id};;CreateDomainSuccess");
+                                    _logger.Info($"User [{thisUser.Id}] create domain [{domainId}]");
+                                }
+                                else
+                                {
+                                    thisUser.PushMessage($"C;{thisUser.Id};;CreateDomainFail|已有同名区域");
+                                    _logger.Warn($"User [{thisUser.Id}] attempt to create domain [domainId] fail: 已有同名区域");
+                                }
+                            }
+                            catch (NullReferenceException ex)
+                            {
+                                    thisUser.PushMessage($"C;{thisUser.Id};;CreateDomainFail|参数数目少于通信协议?");
+                                    _logger.Error($"User [{thisUser.Id}] attempt to create domain [{paramList?[0]}] fail: 参数数目少于通信协议?", ex);
                             }
                             catch (Exception ex)
                             {
-                                _logger.Error("CreateDomain", ex);
+                                    thisUser.PushMessage($"C;{thisUser.Id};;CreateDomainFail|未知错误");
+                                    _logger.Error($"User [{thisUser.Id}] attempt to create domain [{paramList?[0]}] fail: 未知错误", ex);
                             }
                             return;
                         }
@@ -113,22 +130,27 @@ namespace WebsocketReform.Objects
                                     domain.ClassDict.SelectMany(classPair => classPair.Value.UserDict)
                                         .Select(userPair => userPair.Value);
                                 DeleteDomain(domain);
+                                _logger.Info($"User [{thisUser.Id}] delete domain [{paramList?[0]}]");
                                 thisUser.PushMessage($"C;{thisUser.Id};;DeleteDomainSuccess");
                                 foreach (var user in usersToNotify)
                                 {
                                     user.PushMessage($"C;{user.Id};;DomainDeleted");
                                 }
                             }
-                            catch (ArgumentException aex)
+                            catch (IndexOutOfRangeException ex)
+                            {
+                                _logger.Error($"User [{thisUser.Id}] attempt to delete domain [{paramList[0]}] fail: 参数数目少于通信协议?", ex);
+                            }
+                            catch (ArgumentException)
                             {
                                 thisUser.PushMessage($"C;{thisUser.Id};;DeleteDomainFail|区域不存在");
-                                _logger.Warn("DeleteDomain", aex);
+                                _logger.Warn($"User [{thisUser.Id}] attempt to delete domain [{paramList[0]}] fail: 区域不存在");
                             }
                             catch (Exception ex)
                             {
                                 thisUser.PushMessage($"C;{thisUser.Id};;DeleteDomainFail|未知错误");
                                 Console.WriteLine(ex.Message);
-                                _logger.Error("DeleteDomain", ex);
+                                _logger.Error($"User [{thisUser.Id}] attempt to delete domain [{paramList[0]}] fail: 未知错误", ex);
                             }
                             return;
                         }
@@ -142,40 +164,55 @@ namespace WebsocketReform.Objects
                                 var classDesc = paramList[3];
                                 var classPwd = paramList[4];
                                 var classMaxNum = paramList[5];
-
+                                if (!DomainDict.ContainsKey(domainId))
+                                {
+                                    thisUser.PushMessage($"C;{thisUser.Id};;CreateClassFail|指定区域不存在");
+                                    _logger.Warn($"User [{thisUser.Id}] attempt to create class [{classId}] in domain [{domainId}] fail: 指定区域不存在");
+                                    return;
+                                }
                                 var targetDomain = DomainDict[domainId];
-                                if (targetDomain.CreateClass(thisUser.Id, classId, className, classDesc, classPwd,
+                                if (targetDomain.CreateClass(thisUser.Id,
+                                    classId,
+                                    className,
+                                    classDesc,
+                                    classPwd,
                                     int.Parse(classMaxNum)))
                                 {
                                     thisUser.PushMessage(
                                         $"C;{thisUser.Id};;CreateClassSuccess|{domainId},{classId},{className},{classDesc},{classPwd},{classMaxNum}");
                                     targetDomain.BroadCast(
-                                        $"C;{thisUser.Id};;NewClass|{domainId},{classId},{className},{classDesc},{(string.IsNullOrWhiteSpace(classPwd) ? "N" : "Y")},{classMaxNum}",
+                                        $"C;{thisUser.Id};;NewClass|{domainId},{classId},{className},{classDesc},{(string.IsNullOrEmpty(classPwd) ? "N" : "Y")},{classMaxNum}",
                                         excludeUser: thisUser);
+                                    _logger.Info($"User [{thisUser.Id}] create class [{paramList[0]}]");
                                     return;
                                 }
                                 thisUser.PushMessage($"C;{thisUser.Id};;CreateClassFail|超过区域总人数限制");
+                                _logger.Warn($"User [{thisUser.Id}] attempt to create class [{paramList[1]}] in domain [{domainId}] fail: 超过区域总人数限制");
                                 return;
                             }
-                            catch (ArgumentException aex)
+                            catch (IndexOutOfRangeException ex)
+                            {
+                                thisUser.PushMessage($"C;{thisUser.Id};;CreateClassFail|参数数目少于通信协议?");
+                                _logger.Error($"User [{thisUser.Id}] attempt to create class [{paramList[1]}] fail: 参数数目少于通信协议?", ex);
+                            }
+                            catch (ArgumentException)
                             {
                                 thisUser.PushMessage($"C;{thisUser.Id};;CreateClassFail|已有同名教室");
-                                _logger.Warn("CreateClass", aex);
-                                return;
+                                _logger.Warn($"User [{thisUser.Id}] attempt to create class [{paramList[1]}] fail: 已有同名教室");
                             }
                             catch (Exception ex)
                             {
-                                thisUser.PushMessage($"{thisUser.Id};;CreateClassFail|{"未知错误"}");
-                                _logger.Error("CreateClass", ex);
-                                return;
+                                thisUser.PushMessage($"{thisUser.Id};;CreateClassFail|未知错误");
+                                if (paramList.Length >= 5)
+                                    _logger.Error($"User [{thisUser.Id}] attempt to create class [{paramList[1]}] fail: 未知错误", ex);
                             }
+                            return;
                         }
                         case "DismissClass": //删除教室，破坏了结构，必须在内部先发送消息再解散教室
                         {
                             try
                             {
                                 var classId = paramList[0];
-
                                 var cls = thisDomain.ClassDict[classId];
                                 if (cls.Owner != thisUser)
                                 {
@@ -183,21 +220,26 @@ namespace WebsocketReform.Objects
                                 }
                                 thisDomain.DeleteClass(cls);
                                 thisDomain.BroadCast($"C;{thisUser.Id};;DissmissClass|{cls.Id}");
+                                _logger.Info($"User [{thisUser.Id}] dismiss class [{classId}]");
                                 //thisUser.PushMessage($"C;{thisUser.Id};;DissmissClassSuccess");//是否通知解散成功
                                 return;
                             }
-                            catch (ArgumentException aex)
+                            catch (IndexOutOfRangeException ex)
+                            {
+                                thisUser.PushMessage($"C;{thisUser.Id};;DissmissClassFail|参数数目少于通信协议?");
+                                _logger.Error($"User [{thisUser.Id}] attempt to dismiss domain [{paramList[0]}] fail: 参数数目少于通信协议?", ex);
+                            }
+                            catch (ArgumentException)
                             {
                                 thisUser.PushMessage($"C;{thisUser.Id};;DissmissClassFail|教室不存在");
-                                _logger.Warn("DismissClass", aex);
-                                return;
+                                _logger.Warn($"User [{thisUser.Id}] attempt to dismiss class [{paramList[0]}] fail: 教室不存在");
                             }
                             catch (Exception ex)
                             {
                                 thisUser.PushMessage($"C;{thisUser.Id};;DissmissClassFail|未知错误");
-                                _logger.Error("DismissClass", ex);
-                                return;
+                                _logger.Error($"User [{thisUser.Id}] attempt to dismiss class [{paramList[0]}] fail: 未知错误", ex);
                             }
+                            return;
                         }
                         case "ChangeDomain": //改变区域
                         {
@@ -207,7 +249,8 @@ namespace WebsocketReform.Objects
                                 var targetDomain = DomainDict[domainId];
                                 if (thisUser.Domain == targetDomain)
                                 {
-                                    thisUser.PushMessage($"C;{thisUser.Id};;ChangeClassFail|{"你已经在该区域"}");
+                                    thisUser.PushMessage($"C;{thisUser.Id};;ChangeClassFail|你已经在该区域");
+                                    _logger.Warn($"User [{thisUser.Id}] attempt to change domain [{paramList[0]}] fail: 已经在该区域");
                                     return;
                                 }
                                 if (thisUser.ChangeDomain(targetDomain))
@@ -219,20 +262,28 @@ namespace WebsocketReform.Objects
                                     targetDomain.BroadCast(
                                         $"C;{thisUser.Id};;EnterDomain|{targetDomain.Id},{targetDomain.CurNum}|{thisUser.Id},{thisUser.Name},{thisUser.NickName},{thisUser.State},{thisUser.ReceiveState},{thisUser.Sign}",
                                         excludeUser: thisUser);
+                                    _logger.Info($"User [{thisUser.Id}] change domian to [{domainId}]");
                                 }
                                 else
                                 {
-                                    thisUser.PushMessage($"C;{thisUser.Id};;ChangeDomainFail|{"超出区域最大允许人数"}");
+                                    thisUser.PushMessage($"C;{thisUser.Id};;ChangeDomainFail|超出区域最大允许人数");
+                                    _logger.Warn($"User [{thisUser.Id}] attempt to change domain [{paramList[0]}] fail: 超出区域最大允许人数");
                                 }
                             }
-                            catch (KeyNotFoundException kfe)
+                            catch (IndexOutOfRangeException ex)
                             {
-                                thisUser.PushMessage($"C;{thisUser.Id};;ChangeDomainFail|{"区域不存在"}");
-                                _logger.Warn("ChangeDomain", kfe);
+                                    thisUser.PushMessage($"C;{thisUser.Id};;ChangeDomainFail|参数数目少于通信协议?");
+                                    _logger.Error($"User [{thisUser.Id}] attempt to change domain [{paramList[0]}] fail: 参数数目少于通信协议?", ex);
+                            }
+                            catch (KeyNotFoundException)
+                            {
+                                thisUser.PushMessage($"C;{thisUser.Id};;ChangeDomainFail|区域不存在");
+                                _logger.Warn($"User [{thisUser.Id}] attempt to change domain [{paramList[0]}] fail: 区域不存在");
                             }
                             catch (Exception ex)
                             {
-                                _logger.Error("ChangeDomain", ex);
+                                thisUser.PushMessage($"C;{thisUser.Id};;ChangeDomainFail|未知错误");
+                                _logger.Error($"User [{thisUser.Id}] attempt to change domain [{paramList[0]}] fail: 未知错误", ex);
                             }
                             return;
                         }
@@ -245,8 +296,9 @@ namespace WebsocketReform.Objects
                                 var targetClass = thisDomain.ClassDict[classId];
                                 if (thisUser.Class == targetClass)
                                 {
-                                    thisUser.PushMessage($"C;{thisUser.Id};;ChangeClassFail|{"你已经在该教室"}");
-                                    return;
+                                    thisUser.PushMessage($"C;{thisUser.Id};;ChangeClassFail|你已经在该教室");
+                                        _logger.Error($"User [{thisUser.Id}] attempt to change class [{paramList[0]}] fail: 用户已经在该教室");
+                                        return;
                                 }
                                 switch (thisUser.ChangeClass(targetClass, password))
                                 {
@@ -267,29 +319,38 @@ namespace WebsocketReform.Objects
                                         thisDomain.BroadCast(
                                             $"C;{thisUser.Id};;EnterClass|{targetClass.Id},{targetClass.CurNum}",
                                             excludeUser: thisUser);
+                                        _logger.Info($"User [{thisUser.Id}] change class to [{classId}]");
                                         return;
                                     case 1:
-                                        thisUser.PushMessage($"C;{thisUser.Id};;ChangeClassFail|{"教室已满"}");
+                                        thisUser.PushMessage($"C;{thisUser.Id};;ChangeClassFail|教室已满");
+                                        _logger.Warn($"User [{thisUser.Id}] change class [{classId}] fail: 教室已满");
                                         return;
                                     case 2:
-                                        thisUser.PushMessage($"C;{thisUser.Id};;ChangeClassFail|{"密码错误"}");
+                                        thisUser.PushMessage($"C;{thisUser.Id};;ChangeClassFail|密码错误");
+                                        _logger.Warn($"User [{thisUser.Id}] change class [{classId}] fail: 密码错误");
                                         return;
                                     default:
-                                        thisUser.PushMessage($"C;{thisUser.Id};;ChangeClassFail|{"未知错误"}");
+                                        thisUser.PushMessage($"C;{thisUser.Id};;ChangeClassFail|未知错误");
+                                        _logger.Warn($"User [{thisUser.Id}] change class [{classId}] fail: 未知错误");
                                         return;
                                 }
                             }
-                            catch (KeyNotFoundException kfe)
+                            catch (IndexOutOfRangeException ex)
                             {
-                                thisUser.PushMessage($"C;{thisUser.Id};;ChangeClassFail|{"教室不存在"}");
-                                _logger.Warn("ChangeClass", kfe);
-                                return;
+                                    thisUser.PushMessage($"C;{thisUser.Id};;ChangeClassFail|参数数目少于通信协议?");
+                                    _logger.Error($"User [{thisUser.Id}] attempt to change class [{paramList[0]}] fail: 参数数目少于通信协议?",ex);
+                            }
+                            catch (KeyNotFoundException)
+                            {
+                                thisUser.PushMessage($"C;{thisUser.Id};;ChangeClassFail|教室不存在");
+                                    _logger.Warn($"User [{thisUser.Id}] attempt to change class [{paramList[0]}] fail: 教室不存在");
                             }
                             catch (Exception ex)
                             {
-                                _logger.Error("ChangeClass", ex);
-                                return;
-                            }
+                                    thisUser.PushMessage($"C;{thisUser.Id};;ChangeClassFail|未知错误");
+                                    _logger.Error($"User [{thisUser.Id}] attempt to change class [{paramList[0]}] fail: 未知错误",ex);
+                                }
+                            return;
                         }
                         case "ModiState": //改变状态
                             try
@@ -298,10 +359,17 @@ namespace WebsocketReform.Objects
                                 thisUser.ModifyState(state);
                                 thisUser.PushMessage($"C;{thisUser.Id};;ModiStateSuccess|{thisUser.State};");
                                 thisDomain.BroadCast($"C;{thisUser.Id};;ModiState|{thisUser.State};");
+                                _logger.Info($"User [{thisUser.Id}] modify state");
+                            }
+                            catch (IndexOutOfRangeException ex)
+                            {
+                                thisUser.PushMessage($"C;{thisUser.Id};;ModiStateFail|参数数目少于通信协议?");
+                                _logger.Error($"User [{thisUser.Id}] attempt to modify state [{paramList[0]}] fail: 参数数目少于通信协议?", ex);
                             }
                             catch (Exception ex)
                             {
-                                _logger.Warn("ModiState", ex);
+                                thisUser.PushMessage($"C;{thisUser.Id};;ModiStateFail|未知错误");
+                                _logger.Error($"User [{thisUser.Id}] attempt to modify state [{paramList[0]}] fail: 未知错误", ex);
                             }
                             return;
                         case "ModiSign": //改变签名
@@ -311,10 +379,17 @@ namespace WebsocketReform.Objects
                                 thisUser.ModifySign(sign);
                                 thisUser.PushMessage($"C;{thisUser.Id};;ModiSignSuccess|{thisUser.Sign};");
                                 thisDomain.BroadCast($"C;{thisUser.Id};;ModiSign|{thisUser.Sign};");
+                                _logger.Info($"User [{thisUser.Id}] modify sign");
+                            }
+                            catch (IndexOutOfRangeException ex)
+                            {
+                                thisUser.PushMessage($"C;{thisUser.Id};;ModiSignFail|参数数目少于通信协议?");
+                                _logger.Error($"User [{thisUser.Id}] attempt to modify state fail: 参数数目少于通信协议?", ex);
                             }
                             catch (Exception ex)
                             {
-                                _logger.Warn("ModiSign", ex);
+                                thisUser.PushMessage($"C;{thisUser.Id};;ModiSignFail|未知错误");
+                                _logger.Error($"User [{thisUser.Id}] attempt to modify state fail: 未知错误", ex);
                             }
                             return;
                         case "InitGraph": //获取所有图形
@@ -324,39 +399,58 @@ namespace WebsocketReform.Objects
                                 var messageToUser = $"C;{thisUser.Id};InitGraphSuccess";
                                 messageToUser += thisUser.AppendAllGraphic();
                                 thisUser.PushMessage(messageToUser);
+                                _logger.Info($"User [{thisUser.Id}] init graphic");
+                            }
+                            catch (IndexOutOfRangeException ex)
+                            {
+                                thisUser.PushMessage($"C;{thisUser.Id};;InitGraphFail|参数数目少于通信协议?");
+                                _logger.Error($"User [{thisUser.Id}] attempt to init graphic fail: 参数数目少于通信协议?", ex);
                             }
                             catch (Exception ex)
                             {
-                                thisUser.PushMessage($"C;{thisUser.Id};InitGraphFail");
-                                _logger.Error("InitGraph",ex);
+                                thisUser.PushMessage($"C;{thisUser.Id};;InitGraphFail|未知错误");
+                                _logger.Error($"User [{thisUser.Id}] attempt to init graphic fail: 未知错误", ex);
                             }
                             return;
                         }
                         case "GetGraph": //获取指定图形
+                        {
+                            try
                             {
-                                try
-                                {
-                                    int sid = int.Parse(paramList[0])-1;
-                                    var messageToUser = $"C;{thisUser.Id};GetGraphSuccess|";
-                                    messageToUser += thisUser.AppendTargetGraphic(sid);
-                                    thisUser.PushMessage(messageToUser);
-                                }
-                                catch (Exception ex)
-                                {
-                                    thisUser.PushMessage($"C;{thisUser.Id};InitGraphFail");
-                                    _logger.Error("GetGraph",ex);
-                                }
-                                return;
+                                int sid = int.Parse(paramList[0]) - 1;
+                                var messageToUser = $"C;{thisUser.Id};GetGraphSuccess";
+                                messageToUser += thisUser.AppendTargetGraphic(sid);
+                                thisUser.PushMessage(messageToUser);
+                                _logger.Info($"User [{thisUser.Id}] get graphic [{sid}]");
                             }
+                            catch (IndexOutOfRangeException ex)
+                            {
+                                thisUser.PushMessage($"C;{thisUser.Id};;GetGraphFail|参数数目少于通信协议?");
+                                _logger.Error($"User [{thisUser.Id}] attempt to get graphic fail: 参数数目少于通信协议?", ex);
+                            }
+                            catch (Exception ex)
+                            {
+                                thisUser.PushMessage($"C;{thisUser.Id};;GetGraphFail|未知错误");
+                                _logger.Error($"User [{thisUser.Id}] attempt to get graphic fail: 未知错误", ex);
+                            }
+                            return;
+                        }
                         case "ClearGraph": //清除用户所在教室图形
                             try
                             {
                                 thisClass.ClearGraphic();
                                 thisClass.BroadCast(message);
+                                _logger.Info($"User [{thisUser.Id}] clear graphic");
+                            }
+                            catch (IndexOutOfRangeException ex)
+                            {
+                                thisUser.PushMessage($"C;{thisUser.Id};;ClearGraphFail|参数数目少于通信协议?");
+                                _logger.Error($"User [{thisUser.Id}] attempt to clear graphic fail: 参数数目少于通信协议?", ex);
                             }
                             catch (Exception ex)
                             {
-                                _logger.Error("ClearGraph",ex);
+                                thisUser.PushMessage($"C;{thisUser.Id};;ClearGraph|未知错误");
+                                _logger.Error($"User [{thisUser.Id}] attempt to clear graphic fail: 未知错误", ex);
                             }
                             return;
                         case "DelLastGraph":
@@ -364,14 +458,21 @@ namespace WebsocketReform.Objects
                             {
                                 thisClass.DelLastGraph();
                                 thisClass.BroadCast($"C;fromUserID;;DelLastGraph|{thisClass.CurrentGID}");
+                                _logger.Info($"User [{thisUser.Id}] delete last graphic");
+                            }
+                            catch (IndexOutOfRangeException ex)
+                            {
+                                thisUser.PushMessage($"C;{thisUser.Id};;DelLastGraph|参数数目少于通信协议?");
+                                _logger.Error($"User [{thisUser.Id}] attempt to delete last graphic fail: 参数数目少于通信协议?", ex);
                             }
                             catch (Exception ex)
                             {
-                                _logger.Error("DelLastGraph",ex);
+                                thisUser.PushMessage($"C;{thisUser.Id};;DelLastGraph|未知错误");
+                                _logger.Error($"User [{thisUser.Id}] attempt to delete last graphic fail: 未知错误", ex);
                             }
                             return;
                         default:
-                            if (thisClass!=null)
+                            if (thisClass != null)
                             {
                                 thisClass.BroadCast(message);
                             }
@@ -386,14 +487,14 @@ namespace WebsocketReform.Objects
                     string content = partList[3];
                     if (targetId == "ALL")
                     {
-                        if (thisClass.Id!="")
+                        if (thisClass.Id != "")
                         {
-                            thisClass.BroadCast($"T;{thisUser.Id};ALL;{content}"/*,thisUser*/);//排除用户自己
+                            thisClass.BroadCast($"T;{thisUser.Id};ALL;{content}" /*,thisUser*/); //排除用户自己
                         }
                         else
                         {
-                            thisDomain.BroadCast($"T;{thisUser.Id};ALL;{content}"/*, excludeUser:thisUser*/);//排除用户自己
-                            }
+                            thisDomain.BroadCast($"T;{thisUser.Id};ALL;{content}" /*, excludeUser:thisUser*/); //排除用户自己
+                        }
                         return;
                     }
                     try
@@ -405,7 +506,7 @@ namespace WebsocketReform.Objects
                     }
                     catch (Exception ex)
                     {
-                        _logger.Error("T-Message",ex);
+                        _logger.Error("T-Message", ex);
                         thisUser.PushMessage($"T;{thisUser.Id};{targetId};SendMessageFail");
                         return;
                     }
@@ -421,8 +522,9 @@ namespace WebsocketReform.Objects
                     }
                     catch (Exception ex)
                     {
-                            _logger.Error("G-Message", ex);
-                        }
+                        _logger.Error("G-Message", ex);
+                        thisUser.PushMessage($"G;{thisUser.Id};{targetId};SendMessageFail");
+                    }
                     return;
                 }
             }
@@ -457,6 +559,7 @@ namespace WebsocketReform.Objects
             {
                 if (leavingUser == null)
                 {
+                    _logger.Warn("null user disconnect");
                     return;
                 }
                 var thisClass = leavingUser.Class;
@@ -476,10 +579,11 @@ namespace WebsocketReform.Objects
                         cls.Domain.BroadCast($"C;{leavingUser.Id};;DissmissClass|{cls.Id}");
                     }
                 }
+                _logger.Info($"User [{leavingUser.Id}] disconnected");
             }
             catch (Exception ex)
             {
-                _logger.Warn("OnDisconnected多个用户同时下线与该用户同时下线: " + leavingUser?.Id,ex);
+                _logger.Warn("OnDisconnected多个用户同时下线与该用户同时下线: " + leavingUser?.Id, ex);
             }
         }
 
@@ -499,23 +603,26 @@ namespace WebsocketReform.Objects
             //todo:验证相同ID在线,挤下去,消息提示?
             try
             {
-                User otherUser = UserDict[thisUser.Id];
-                otherUser?.PushMessage($"C;{otherUser.Id};;LoginFail|账号在别处登陆");
-                otherUser?.Socket.Socket.Close();
+                User originalUser = UserDict[thisUser.Id];
+                originalUser?.PushMessage($"C;{originalUser.Id};;LoginFail|账号在别处登陆");
+                thisUser.Class.UserDict.Remove(originalUser.Id);
+                originalUser?.Socket.Socket.Close();
                 UserDict[thisUser.Id] = thisUser;
                 thisUser.Class.UserDict.Add(thisUser.Id, thisUser);
-                thisUser.PushMessage($"C;{otherUser.Id};;LoginSuccess|{this.DraftInfo}");
+                thisUser.PushMessage($"C;{thisUser.Id};;LoginSuccess|{this.DraftInfo}");
+                _logger.Info($"User [{thisUser.Id}] forced connected");
             }
-            catch (KeyNotFoundException kfe)
+            catch (KeyNotFoundException)
             {
                 UserDict.Add(thisUser.Id, thisUser);
                 thisUser.Class.UserDict.Add(thisUser.Id, thisUser);
                 thisUser.PushMessage($"C;{thisUser.Id};;LoginSuccess|{this.DraftInfo}");
-                _logger.Warn("OnNewConnection",kfe);
+                _logger.Info($"User [{thisUser.Id}] connected");
             }
         }
 
-        public string DraftInfo {
+        public string DraftInfo
+        {
             get
             {
                 string result = this.DomainDict.Select(item => item.Value)

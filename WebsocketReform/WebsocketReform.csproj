@@ -9,7 +9,7 @@
     <AppDesignerFolder>Properties</AppDesignerFolder>
     <RootNamespace>WebsocketReform</RootNamespace>
     <AssemblyName>WebsocketReform</AssemblyName>
-    <TargetFrameworkVersion>v4.5.1</TargetFrameworkVersion>
+    <TargetFrameworkVersion>v4.5</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
     <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
     <TargetFrameworkProfile />
@@ -39,14 +39,13 @@
     <Reference Include="log4net">
       <HintPath>..\..\references\log4net.dll</HintPath>
     </Reference>
+    <Reference Include="Microsoft.CSharp" />
     <Reference Include="System" />
     <Reference Include="System.Core" />
     <Reference Include="System.Web" />
     <Reference Include="System.Xml.Linq" />
     <Reference Include="System.Data.DataSetExtensions" />
-    <Reference Include="Microsoft.CSharp" />
     <Reference Include="System.Data" />
-    <Reference Include="System.Net.Http" />
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
@@ -63,6 +62,7 @@
     <Compile Include="SocketObjects\DataFrame\DataFrame.cs" />
     <Compile Include="SocketObjects\DataFrame\DataFrameHeader.cs" />
     <Compile Include="SocketObjects\SocketConnection.cs" />
+    <Compile Include="SocketObjects\WebSocketServer - 复制.cs" />
     <Compile Include="SocketObjects\WebSocketServer.cs" />
   </ItemGroup>
   <ItemGroup>
