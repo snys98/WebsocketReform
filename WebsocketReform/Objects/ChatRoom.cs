@@ -73,6 +73,7 @@ namespace WebsocketReform.Objects
 
         public void OnDataReceived(SocketConnection sender, string message, EventArgs e)
         {
+            Console.WriteLine(message);
             var partList = message.Split(';');
             var controlHeader = partList[0];
             var senderId = partList[1];
@@ -249,7 +250,7 @@ namespace WebsocketReform.Objects
                                 var targetDomain = DomainDict[domainId];
                                 if (thisUser.Domain == targetDomain)
                                 {
-                                    thisUser.PushMessage($"C;{thisUser.Id};;ChangeClassFail|你已经在该区域");
+                                    thisUser.PushMessage($"C;{thisUser.Id};;ChangeDomainFail|你已经在该区域");
                                     _logger.Warn($"User [{thisUser.Id}] attempt to change domain [{paramList[0]}] fail: 已经在该区域");
                                     return;
                                 }
@@ -471,6 +472,9 @@ namespace WebsocketReform.Objects
                                 _logger.Error($"User [{thisUser.Id}] attempt to delete last graphic fail: 未知错误", ex);
                             }
                             return;
+                        case "Pulse":
+                            thisUser.PushMessage($"C;{thisUser.Id};;Pulse|");
+                            return;
                         default:
                             if (thisClass != null)
                             {
@@ -585,6 +589,10 @@ namespace WebsocketReform.Objects
             {
                 _logger.Warn("OnDisconnected多个用户同时下线与该用户同时下线: " + leavingUser?.Id, ex);
             }
+            finally
+            {
+                sender.Socket.Close(100);
+            }
         }
 
         public void OnNewConnection(SocketConnection sender, SocketConnection.NewConnectionEventArgs e)
@@ -604,9 +612,17 @@ namespace WebsocketReform.Objects
             try
             {
                 User originalUser = UserDict[thisUser.Id];
-                originalUser?.PushMessage($"C;{originalUser.Id};;LoginFail|账号在别处登陆");
-                thisUser.Class.UserDict.Remove(originalUser.Id);
-                originalUser?.Socket.Socket.Close();
+                originalUser.PushMessage($"C;{originalUser.Id};;LoginFail|账号在别处登陆");
+                OnDisconnected(originalUser.Socket, e);
+                //已经在ondisconnect中完成
+                //thisUser.Class.UserDict.Remove(originalUser.Id);
+                
+                ////确定客户端收到消息再断开
+                //new Thread(() =>
+                //{
+                //    Thread.Sleep(100);
+                //    originalUser?.Socket.Socket.Close();
+                //}).Start();
                 UserDict[thisUser.Id] = thisUser;
                 thisUser.Class.UserDict.Add(thisUser.Id, thisUser);
                 thisUser.PushMessage($"C;{thisUser.Id};;LoginSuccess|{this.DraftInfo}");

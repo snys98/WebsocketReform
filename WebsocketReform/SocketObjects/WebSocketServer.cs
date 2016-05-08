@@ -1,4 +1,5 @@
-﻿using System;
+﻿using log4net;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -45,6 +46,7 @@ namespace WebsocketReform.SocketObjects
         private StreamReader _connectionReader;
         private StreamWriter _connectionWriter;
         private Logger _logger;
+        private readonly ILog _logger4net = LogManager.GetLogger(typeof(WebSocketServer));
         private byte[] _firstByte;
         private byte[] _lastByte;
         private byte[] _serverKey1;
@@ -164,52 +166,61 @@ namespace WebsocketReform.SocketObjects
 
         public void StartServer()
         {
-            Char char1 = Convert.ToChar(65533);
-            for (int i = 0; i < _listener.Count; i++)
-            {
-                new Thread((socketObj) =>
+            
+                Char char1 = Convert.ToChar(65533);
+                for (int i = 0; i < _listener.Count; i++)
                 {
-                    var socket = socketObj as Socket;
-                    socket.Listen(_connectionsQueueLength);
-                    _logger.Log(string.Format("聊天服务器启动。监听地址：{0}", socket.LocalEndPoint));
-                    _logger.Log(string.Format("WebSocket服务器地址: ws://{0}/chat", socket.LocalEndPoint));
-                    while (true)
+                    new Thread((socketObj) =>
                     {
-                        Socket sc = socket.Accept();
-                        Console.WriteLine("*****Available在线程[" + Thread.CurrentThread.ManagedThreadId + "]中为" + sc.Available);
-                        if (sc != null)
+                        var socket = socketObj as Socket;
+                        socket.Listen(_connectionsQueueLength);
+                        _logger.Log(string.Format("聊天服务器启动。监听地址：{0}", socket.LocalEndPoint));
+                        _logger.Log(string.Format("WebSocket服务器地址: ws://{0}/chat", socket.LocalEndPoint));
+                        while (true)
                         {
-                            //System.Threading.Thread.Sleep(100);   
-                            SocketConnection socketConn = new SocketConnection(sc);
-                            Console.WriteLine("*****Available在线程[" + Thread.CurrentThread.ManagedThreadId + "]中为" + socketConn.Socket.Available);
-                            socketConn.NewConnection += new NewConnectionEventHandler(OnNewConnection);
-                            socketConn.DataReceived += new DataReceivedEventHandler(OnDataReceived);
-                            socketConn.Disconnected += new DisconnectedEventHandler(OnDisconnected);
-
-
-                            //socketConn.Socket.BeginReceive(socketConn.receivedDataBuffer,
-                            //0,
-                            //socketConn.receivedDataBuffer.Length,
-                            //0,
-                            //    ar =>
-                            //    {
-                            //        if ((int)ar.AsyncState == 0)
-                            //        {
-                            //            return;
-                            //        }
-                            //        Console.WriteLine("*****当前线程[" + Thread.CurrentThread.ManagedThreadId + "],Available值为" + socketConn.Socket.Available);
-                            //        socketConn.ManageHandshake(ar);
-                            //    },
-                            //socketConn.Socket.Available);
-                            var dataLength = socketConn.Socket.Receive(socketConn.receivedDataBuffer, 0, socketConn.receivedDataBuffer.Length, 0);
-                            if (dataLength!=0)
+                            try
                             {
-                                socketConn.ManageHandshake(dataLength: dataLength);
+                                Socket sc = socket.Accept();
+                                //Console.WriteLine("*****Available在线程[" + Thread.CurrentThread.ManagedThreadId + "]中为" + sc.Available);
+                                if (sc != null)
+                                {
+                                    //System.Threading.Thread.Sleep(100);   
+                                    SocketConnection socketConn = new SocketConnection(sc);
+                                    //Console.WriteLine("*****Available在线程[" + Thread.CurrentThread.ManagedThreadId + "]中为" + socketConn.Socket.Available);
+                                    socketConn.NewConnection += new NewConnectionEventHandler(OnNewConnection);
+                                    socketConn.DataReceived += new DataReceivedEventHandler(OnDataReceived);
+                                    socketConn.Disconnected += new DisconnectedEventHandler(OnDisconnected);
+
+
+                                    //socketConn.Socket.BeginReceive(socketConn.receivedDataBuffer,
+                                    //0,
+                                    //socketConn.receivedDataBuffer.Length,
+                                    //0,
+                                    //    ar =>
+                                    //    {
+                                    //        if ((int)ar.AsyncState == 0)
+                                    //        {
+                                    //            return;
+                                    //        }
+                                    //        Console.WriteLine("*****当前线程[" + Thread.CurrentThread.ManagedThreadId + "],Available值为" + socketConn.Socket.Available);
+                                    //        socketConn.ManageHandshake(ar);
+                                    //    },
+                                    //socketConn.Socket.Available);
+                                    var dataLength = socketConn.Socket.Receive(socketConn.receivedDataBuffer, 0, socketConn.receivedDataBuffer.Length, 0);
+                                    if (dataLength != 0)
+                                    {
+                                        socketConn.ManageHandshake(dataLength: dataLength);
+                                    }
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                _logger4net.Error(ex);
                             }
                         }
-                    }
-                }).Start(_listener[i]);
-            }
+                    }).Start(_listener[i]);
+                }
+            
         }
 
         public void OnDisconnected(SocketConnection sender, EventArgs e)
